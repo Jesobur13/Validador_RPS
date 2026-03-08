@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Validador de Cédulas - Matriz RPS</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        :root {
+            --color-bg: #fcfcf9;
+            --color-surface: #fffffe;
+            --color-text: #13343b;
+            --color-primary: #218d8d;
+            --color-primary-hover: #1d7480;
+            --color-error: #c0152f;
+            --color-warning: #e68161;
+            --color-success: #218d8d;
+            --color-border: rgba(94, 82, 64, 0.2);
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --color-bg: #1f2121;
+                --color-surface: #262828;
+                --color-text: #f5f5f5;
+                --color-primary: #32b8c6;
+                --color-primary-hover: #2da6b2;
+                --color-error: #ff5459;
+                --color-warning: #e68161;
+                --color-border: rgba(119, 124, 124, 0.3);
+            }
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--color-bg);
+            color: var(--color-text);
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .header h1 { font-size: 28px; margin-bottom: 8px; }
+        .header p { opacity: 0.7; }
+        .card {
+            background: var(--color-surface);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+            border: 1px solid var(--color-border);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        .upload-zone {
+            border: 2px dashed var(--color-border);
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .upload-zone:hover { border-color: var(--color-primary); background: rgba(33,141,141,0.05); }
+        .upload-zone.dragover { border-color: var(--color-primary); background: rgba(33,141,141,0.1); }
+        .upload-icon { font-size: 48px; margin-bottom: 16px; }
+        input[type="file"] { display: none; }
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            background: var(--color-primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+        .btn:hover { background: var(--color-primary-hover); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-secondary { background: rgba(94,82,64,0.12); color: var(--color-text); }
+        .btn-secondary:hover { background: rgba(94,82,64,0.2); }
+        .btn-orange { background: #c0152f; }
+        .btn-orange:hover { background: #a01228; }
+        .progress-bar {
+            width: 100%; height: 8px;
+            background: rgba(94,82,64,0.1);
+            border-radius: 4px; overflow: hidden; margin: 20px 0;
+        }
+        .progress-fill { height: 100%; background: var(--color-primary); width: 0%; transition: width 0.3s ease; }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px; margin-bottom: 20px;
+        }
+        .stat-card {
+            background: var(--color-surface);
+            padding: 16px; border-radius: 8px;
+            border: 1px solid var(--color-border); text-align: center;
+        }
+        .stat-value { font-size: 32px; font-weight: 600; margin-bottom: 4px; }
+        .stat-label { font-size: 13px; opacity: 0.7; }
+        .stat-error { color: var(--color-error); }
+        .stat-warning { color: var(--color-warning); }
+        .stat-success { color: var(--color-success); }
+        .error-list { max-height: 400px; overflow-y: auto; margin-top: 16px; }
+        .error-item {
+            padding: 12px; margin-bottom: 8px; border-radius: 6px;
+            border-left: 4px solid var(--color-error);
+            background: rgba(192,21,47,0.08);
+        }
+        .error-item.warning {
+            border-left-color: var(--color-warning);
+            background: rgba(230,129,97,0.08);
+        }
+        .error-header { font-weight: 600; margin-bottom: 4px; }
+        .error-detail { font-size: 14px; opacity: 0.8; }
+        .hidden { display: none; }
+        .button-group { display: flex; gap: 12px; margin-top: 20px; flex-wrap: wrap; }
+        .form-group { margin-bottom: 14px; }
+        .form-group label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px; }
+        .form-group input, .form-group textarea {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid var(--color-border);
+            border-radius: 6px;
+            background: var(--color-surface);
+            color: var(--color-text);
+            font-family: inherit;
+            font-size: 14px;
+        }
+        .form-group input:focus, .form-group textarea:focus {
+            outline: 2px solid var(--color-primary);
+            border-color: var(--color-primary);
+        }
+        .form-group textarea { resize: vertical; min-height: 75px; }
+        .report-form {
+            background: rgba(33,141,141,0.05);
+            border: 1px solid var(--color-border);
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 20px;
+        }
+        .report-form h3 { margin-bottom: 14px; font-size: 15px; color: var(--color-primary); }
+        @media (max-width: 768px) {
+            .stats { grid-template-columns: 1fr 1fr; }
+            .button-group { flex-direction: column; }
+            .btn { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>📋 Validador de Cédulas — Matriz RPS</h1>
+        <p>Valida cédulas de 10 dígitos y detecta duplicados en la Matriz de Casos RPS</p>
+    </div>
+
+    <div class="card">
+        <div class="upload-zone" id="uploadZone">
+            <div class="upload-icon">📁</div>
+            <h3>Arrastra tu archivo Excel aquí</h3>
+            <p style="margin:12px 0; opacity:0.7;">o haz clic para seleccionar</p>
+            <button class="btn" onclick="document.getElementById('fileInput').click()">Seleccionar Archivo</button>
+            <input type="file" id="fileInput" accept=".xlsx,.xls" />
+        </div>
+        <div id="progressSection" class="hidden">
+            <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+            <p id="progressText" style="text-align:center; margin-top:8px;"></p>
+        </div>
+    </div>
+
+    <div id="resultsSection" class="hidden">
+        <div class="card">
+            <h2>📊 Resumen de Validación</h2>
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-value" id="totalRows">0</div>
+                    <div class="stat-label">Total Registros</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value stat-success" id="validCount">0</div>
+                    <div class="stat-label">✓ Cédulas Válidas</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value stat-error" id="invalidCount">0</div>
+                    <div class="stat-label">✗ Cédulas Inválidas</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value stat-warning" id="duplicateCount">0</div>
+                    <div class="stat-label">⚠ Duplicados</div>
+                </div>
+            </div>
+
+            <div class="report-form">
+                <h3>📝 Datos para el Reporte PDF</h3>
+                <div class="form-group">
+                    <label for="distritoInput">Distrito:</label>
+                    <input type="text" id="distritoInput" placeholder="Ej: Distrito 09D01 Guayaquil 1" />
+                </div>
+                <div class="form-group">
+                    <label for="observationsInput">Observaciones (opcional):</label>
+                    <textarea id="observationsInput" placeholder="Ingrese observaciones adicionales..."></textarea>
+                </div>
+            </div>
+
+            <div class="button-group">
+                <button class="btn" onclick="generatePDF()">📄 Reporte Detallado PDF</button>
+                <button class="btn btn-orange" onclick="generateResponsablePDF()">👤 Reporte por Responsable PDF</button>
+                <button class="btn btn-secondary" onclick="location.reload()">🔄 Validar Otro Archivo</button>
+            </div>
+        </div>
+
+        <div class="card hidden" id="errorsCard">
+            <h2>❌ Errores Detectados</h2>
+            <div class="error-list" id="errorList"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let validationResults = { totalRows: 0, validCount: 0, invalidCedulas: [], duplicates: [] };
+    let rawRows = [];
+    let fileName = "";
+
+    const uploadZone = document.getElementById("uploadZone");
+    const fileInput = document.getElementById("fileInput");
+
+    uploadZone.addEventListener("dragover", (e) => { e.preventDefault(); uploadZone.classList.add("dragover"); });
+    uploadZone.addEventListener("dragleave", () => uploadZone.classList.remove("dragover"));
+    uploadZone.addEventListener("drop", (e) => {
+        e.preventDefault(); uploadZone.classList.remove("dragover");
+        if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
+    });
+    uploadZone.addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", (e) => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+
+    function handleFile(file) {
+        fileName = file.name;
+        showProgress("Cargando archivo...");
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: "array", cellDates: true });
+                processWorkbook(workbook);
+            } catch (err) {
+                alert("Error al leer el archivo: " + err.message);
+                hideProgress();
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    function showProgress(text) {
+        document.getElementById("progressSection").classList.remove("hidden");
+        document.getElementById("progressText").textContent = text;
+        document.getElementById("progressFill").style.width = "50%";
+    }
+    function hideProgress() {
+        document.getElementById("progressSection").classList.add("hidden");
+        document.getElementById("progressFill").style.width = "0%";
+    }
+
+    function processWorkbook(workbook) {
+        showProgress("Validando cédulas...");
+        setTimeout(() => {
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const data = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+            rawRows = data;
+
+            // Col D=3 (institución), Col G=6 (quien registra), Col I=8 (cédula)
+            const COL_INST = 3, COL_QUIEN = 6, COL_CED = 8;
+
+            validationResults = { totalRows: 0, validCount: 0, invalidCedulas: [], duplicates: [] };
+            const cedulaMap = new Map();
+
+            for (let i = 2; i < data.length; i++) {
+                const row = data[i];
+                const cedula = row[COL_CED];
+                if (!cedula || cedula.toString().trim() === "") continue;
+
+                validationResults.totalRows++;
+                const excelRow = i + 1;
+                const cedulaStr = cedula.toString().trim();
+                const institucion = (row[COL_INST] || "").toString().trim();
+                const quienRegistra = (row[COL_QUIEN] || "").toString().trim();
+                const isValid = /^\d{10}$/.test(cedulaStr);
+
+                if (!isValid) {
+                    validationResults.invalidCedulas.push({
+                        row: excelRow,
+                        column: "I",
+                        cedula: cedulaStr,
+                        institucion: institucion,
+                        quienRegistra: quienRegistra,
+                        error: cedulaStr.length !== 10
+                            ? "Longitud incorrecta: " + cedulaStr.length + " dígitos (debe ser 10)"
+                            : "Contiene caracteres no numéricos"
+                    });
+                } else {
+                    validationResults.validCount++;
+                    if (cedulaMap.has(cedulaStr)) {
+                        cedulaMap.get(cedulaStr).rows.push(excelRow);
+                    } else {
+                        cedulaMap.set(cedulaStr, {
+                            rows: [excelRow],
+                            institucion: institucion,
+                            quienRegistra: quienRegistra
+                        });
+                    }
+                }
+            }
+
+            for (const [cedula, info] of cedulaMap.entries()) {
+                if (info.rows.length > 1) {
+                    validationResults.duplicates.push({
+                        cedula, rows: info.rows, count: info.rows.length,
+                        institucion: info.institucion, quienRegistra: info.quienRegistra
+                    });
+                }
+            }
+
+            hideProgress();
+            displayResults();
+        }, 100);
+    }
+
+    function displayResults() {
+        document.getElementById("resultsSection").classList.remove("hidden");
+        const invalidCount = validationResults.invalidCedulas.length;
+        const duplicateCount = validationResults.duplicates.reduce((s, d) => s + d.count, 0);
+        document.getElementById("totalRows").textContent = validationResults.totalRows;
+        document.getElementById("validCount").textContent = validationResults.validCount;
+        document.getElementById("invalidCount").textContent = invalidCount;
+        document.getElementById("duplicateCount").textContent = duplicateCount;
+
+        const errorList = document.getElementById("errorList");
+        const errorsCard = document.getElementById("errorsCard");
+        if (invalidCount > 0 || validationResults.duplicates.length > 0) {
+            errorsCard.classList.remove("hidden");
+            errorList.innerHTML = "";
+            validationResults.invalidCedulas.forEach(err => {
+                const el = document.createElement("div");
+                el.className = "error-item";
+                el.innerHTML = "<div class=\"error-header\">❌ Fila " + err.row + " — Columna I</div>" +
+                    "<div class=\"error-detail\">Cédula: <b>" + err.cedula + "</b> — " + err.error + "<br>" +
+                    "Institución: " + err.institucion + " | Registrado por: " + err.quienRegistra + "</div>";
+                errorList.appendChild(el);
+            });
+            validationResults.duplicates.forEach(dup => {
+                const el = document.createElement("div");
+                el.className = "error-item warning";
+                el.innerHTML = "<div class=\"error-header\">⚠ Duplicado: " + dup.cedula + "</div>" +
+                    "<div class=\"error-detail\">Aparece " + dup.count + " veces en filas: " + dup.rows.join(", ") + "<br>" +
+                    "Institución: " + dup.institucion + " | Registrado por: " + dup.quienRegistra + "</div>";
+                errorList.appendChild(el);
+            });
+        }
+    }
+
+    // ─── Helpers PDF ──────────────────────────────────────────────
+    function pdfHeader(doc, distrito, now) {
+        const pw = doc.internal.pageSize.getWidth(), m = 15;
+        doc.setDrawColor(33, 141, 141); doc.setLineWidth(1.2);
+        doc.line(m, 12, pw - m, 12);
+        doc.setFontSize(11); doc.setFont("helvetica", "bold");
+        doc.text("Subsecretaría de Educación del Distrito de Guayaquil", pw / 2, 18, { align: "center" });
+        doc.setFontSize(9); doc.setFont("helvetica", "normal");
+        doc.text("Dirección Zonal de Educación Especializada e Inclusiva", pw / 2, 24, { align: "center" });
+        doc.text("Equipo Técnico: Departamento de Consejería Estudiantil", pw / 2, 29, { align: "center" });
+        doc.setDrawColor(33, 141, 141); doc.setLineWidth(0.5);
+        doc.line(m, 33, pw - m, 33);
+        doc.setFontSize(14); doc.setFont("helvetica", "bold");
+        doc.text("Reporte de Validación — Matriz RPS", pw / 2, 41, { align: "center" });
+        doc.setFontSize(9); doc.setFont("helvetica", "normal");
+        doc.text("Distrito: " + distrito, m, 49);
+        doc.text("Archivo: " + fileName, m, 54);
+        doc.text("Fecha y Hora: " + now, m, 59);
+        return 66;
+    }
+
+    function pdfFooter(doc) {
+        const pw = doc.internal.pageSize.getWidth(), ph = doc.internal.pageSize.getHeight(), m = 15;
+        const total = doc.internal.getNumberOfPages();
+        for (let i = 1; i <= total; i++) {
+            doc.setPage(i);
+            const fy = ph - 10;
+            doc.setDrawColor(33, 141, 141); doc.setLineWidth(0.4);
+            doc.line(m, fy - 4, pw - m, fy - 4);
+            doc.setFontSize(7); doc.setFont("helvetica", "italic");
+            doc.text("Reporte Generado por: Z_8_JeffersonSolis", m, fy);
+            doc.setFont("helvetica", "normal");
+            doc.text("Versión: 0.1", pw - m - 18, fy);
+            doc.text("Página " + i + " de " + total, pw / 2, fy, { align: "center" });
+        }
+    }
+
+    // ─── Reporte Detallado ─────────────────────────────────────────
+    function generatePDF() {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        const m = 15, pw = doc.internal.pageSize.getWidth();
+        const distrito = document.getElementById("distritoInput").value.trim() || "No especificado";
+        const observations = document.getElementById("observationsInput").value.trim();
+        const now = new Date().toLocaleString("es-EC", { dateStyle: "full", timeStyle: "short" });
+
+        let y = pdfHeader(doc, distrito, now);
+
+        // Resumen
+        doc.setFontSize(11); doc.setFont("helvetica", "bold");
+        doc.text("Resumen de Validación", m, y); y += 4;
+        doc.autoTable({
+            startY: y,
+            head: [["Métrica", "Cantidad"]],
+            body: [
+                ["Total de Registros", validationResults.totalRows.toString()],
+                ["Cédulas Válidas", validationResults.validCount.toString()],
+                ["Cédulas Inválidas", validationResults.invalidCedulas.length.toString()],
+                ["Registros Duplicados", validationResults.duplicates.reduce((s, d) => s + d.count, 0).toString()]
+            ],
+            theme: "grid",
+            headStyles: { fillColor: [33, 141, 141], fontSize: 9 },
+            styles: { fontSize: 9 },
+            margin: { left: m, right: m }
+        });
+        y = doc.lastAutoTable.finalY + 10;
+
+        // Cédulas inválidas
+        if (validationResults.invalidCedulas.length > 0) {
+            if (y > 240) { doc.addPage(); y = 20; }
+            doc.setFontSize(11); doc.setFont("helvetica", "bold");
+            doc.text("Cédulas Inválidas", m, y); y += 4;
+            doc.autoTable({
+                startY: y,
+                head: [["Fila", "Cédula", "Error", "Institución", "Registrado por"]],
+                body: validationResults.invalidCedulas.map(e => [
+                    e.row.toString(), e.cedula, e.error, e.institucion, e.quienRegistra
+                ]),
+                theme: "grid",
+                headStyles: { fillColor: [192, 21, 47], fontSize: 8 },
+                styles: { fontSize: 7 },
+                columnStyles: { 3: { cellWidth: 45 }, 4: { cellWidth: 40 } },
+                margin: { left: m, right: m }
+            });
+            y = doc.lastAutoTable.finalY + 10;
+        }
+
+        // Duplicados
+        if (validationResults.duplicates.length > 0) {
+            if (y > 240) { doc.addPage(); y = 20; }
+            doc.setFontSize(11); doc.setFont("helvetica", "bold");
+            doc.text("Cédulas Duplicadas", m, y); y += 4;
+            doc.autoTable({
+                startY: y,
+                head: [["Cédula", "Veces", "Filas", "Institución", "Registrado por"]],
+                body: validationResults.duplicates.map(d => [
+                    d.cedula, d.count.toString(), d.rows.join(", "), d.institucion, d.quienRegistra
+                ]),
+                theme: "grid",
+                headStyles: { fillColor: [230, 129, 97], fontSize: 8 },
+                styles: { fontSize: 7 },
+                columnStyles: { 3: { cellWidth: 45 }, 4: { cellWidth: 40 } },
+                margin: { left: m, right: m }
+            });
+            y = doc.lastAutoTable.finalY + 10;
+        }
+
+        // Observaciones
+        if (observations) {
+            if (y > 240) { doc.addPage(); y = 20; }
+            doc.setFontSize(11); doc.setFont("helvetica", "bold");
+            doc.text("Observaciones", m, y); y += 6;
+            doc.setFontSize(9); doc.setFont("helvetica", "normal");
+            const lines = doc.splitTextToSize(observations, pw - m * 2);
+            doc.text(lines, m, y);
+        }
+
+        pdfFooter(doc);
+        doc.save("Reporte_Detallado_RPS_" + new Date().toISOString().split("T")[0] + ".pdf");
+    }
+
+    // ─── Reporte por Responsable ───────────────────────────────────
+    function generateResponsablePDF() {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        const m = 15, pw = doc.internal.pageSize.getWidth();
+        const distrito = document.getElementById("distritoInput").value.trim() || "No especificado";
+        const observations = document.getElementById("observationsInput").value.trim();
+        const now = new Date().toLocaleString("es-EC", { dateStyle: "full", timeStyle: "short" });
+
+        // Agrupar todos los errores por quienRegistra
+        const grupos = new Map();
+
+        const addToGrupo = (quienRegistra, institucion, tipo, fila, cedula, detalle) => {
+            const key = quienRegistra || "Sin nombre";
+            if (!grupos.has(key)) {
+                grupos.set(key, { quienRegistra: key, institucion: institucion, errores: [] });
+            }
+            grupos.get(key).errores.push({ tipo, fila, cedula, detalle });
+        };
+
+        validationResults.invalidCedulas.forEach(e => {
+            addToGrupo(e.quienRegistra, e.institucion, "Cédula inválida", e.row, e.cedula, e.error);
+        });
+        validationResults.duplicates.forEach(d => {
+            d.rows.forEach(fila => {
+                addToGrupo(d.quienRegistra, d.institucion, "Duplicado", fila, d.cedula,
+                    "Aparece " + d.count + " veces (filas: " + d.rows.join(", ") + ")");
+            });
+        });
+
+        let y = pdfHeader(doc, distrito, now);
+
+        // Título especial
+        doc.setFontSize(11); doc.setFont("helvetica", "bold");
+        doc.text("Reporte de Errores por Responsable de Registro", m, y); y += 4;
+
+        if (grupos.size === 0) {
+            doc.setFontSize(10); doc.setFont("helvetica", "normal");
+            doc.setTextColor(33, 141, 141);
+            doc.text("✓ No se encontraron errores en el archivo.", m, y + 6);
+            doc.setTextColor(0, 0, 0);
+        } else {
+            // Tabla resumen por responsable
+            const resumenBody = [];
+            for (const [, g] of grupos) {
+                resumenBody.push([g.quienRegistra, g.institucion, g.errores.length.toString()]);
+            }
+            doc.autoTable({
+                startY: y,
+                head: [["Responsable", "Institución Educativa", "N° Errores"]],
+                body: resumenBody,
+                theme: "grid",
+                headStyles: { fillColor: [33, 141, 141], fontSize: 9 },
+                styles: { fontSize: 8 },
+                columnStyles: { 1: { cellWidth: 75 } },
+                margin: { left: m, right: m }
+            });
+            y = doc.lastAutoTable.finalY + 12;
+
+            // Detalle por cada responsable
+            for (const [, g] of grupos) {
+                if (y > 240) { doc.addPage(); y = 20; }
+
+                // Caja de nombre
+                doc.setFillColor(33, 141, 141);
+                doc.roundedRect(m, y - 5, pw - m * 2, 10, 2, 2, "F");
+                doc.setFontSize(10); doc.setFont("helvetica", "bold");
+                doc.setTextColor(255, 255, 255);
+                doc.text(g.quienRegistra + "  —  " + g.institucion, m + 4, y + 1);
+                doc.setTextColor(0, 0, 0);
+                y += 8;
+
+                doc.setFontSize(8); doc.setFont("helvetica", "italic");
+                doc.text("Total de errores: " + g.errores.length, m, y + 2); y += 6;
+
+                doc.autoTable({
+                    startY: y,
+                    head: [["Fila", "Tipo", "Cédula", "Descripción"]],
+                    body: g.errores.map(e => [e.fila.toString(), e.tipo, e.cedula, e.detalle]),
+                    theme: "striped",
+                    headStyles: { fillColor: [192, 21, 47], fontSize: 8 },
+                    styles: { fontSize: 7.5 },
+                    margin: { left: m, right: m }
+                });
+                y = doc.lastAutoTable.finalY + 12;
+            }
+        }
+
+        // Observaciones
+        if (observations) {
+            if (y > 240) { doc.addPage(); y = 20; }
+            doc.setFontSize(11); doc.setFont("helvetica", "bold");
+            doc.text("Observaciones", m, y); y += 6;
+            doc.setFontSize(9); doc.setFont("helvetica", "normal");
+            const lines = doc.splitTextToSize(observations, pw - m * 2);
+            doc.text(lines, m, y);
+        }
+
+        pdfFooter(doc);
+        doc.save("Reporte_Responsables_RPS_" + new Date().toISOString().split("T")[0] + ".pdf");
+    }
+</script>
+</body>
+</html>
